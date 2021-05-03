@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <link href="https://fonts.googleapis.com/css?family=Roboto:100,300,400,500,700,900" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/@mdi/font@4.x/css/materialdesignicons.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.min.css" rel="stylesheet">
+    <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, minimal-ui">
+    <title>グローバルIPアドレス</title>
+</head>
+
+<body>
+    <div id="app">
+        <v-app>
+            <v-main>
+                <v-container>
+                    <v-simple-table fixed-header height="300px">
+                        <template v-slot:default>
+                            <thead>
+                                <tr>
+                                    <th class="text-left">
+                                        Date
+                                    </th>
+                                    <th class="text-left">
+                                        v4
+                                    </th>
+                                    <th class="text-left">
+                                        v6
+                                    </th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr v-for="item in ipaddresses" :key="item.date">
+                                    <td>{{ item.date }}</td>
+                                    <td>{{ item.v4 }}</td>
+                                    <td>{{ item.v6 }}</td>
+                                </tr>
+                            </tbody>
+                        </template>
+                    </v-simple-table>
+                    <v-row class="justify-center">
+                        <v-btn class="ma-2" outlined color="indigo" @click="dialog.delete = true">
+                            clear db
+                        </v-btn>
+                    </v-row>
+
+                </v-container>
+
+                <v-dialog v-model="dialog.delete" persistent max-width="290">
+                    <v-card>
+                        <v-card-title class="headline">
+                            Clear DB?
+                        </v-card-title>
+                        <v-card-actions>
+                            <v-spacer></v-spacer>
+                            <v-btn color="green darken-1" text @click="dialog.delete = false">
+                                Cancel
+                            </v-btn>
+                            <v-btn color="green darken-1" text @click="clear_db()">
+                                Clear
+                            </v-btn>
+                        </v-card-actions>
+                    </v-card>
+                </v-dialog>
+            </v-main>
+        </v-app>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/vue@2.x/dist/vue.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/vuetify@2.x/dist/vuetify.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/axios/dist/axios.min.js"></script>
+    <script src="https://unpkg.com/dexie@latest/dist/dexie.js"></script>
+    <script src="https://unpkg.com/dayjs@1.8.21/dayjs.min.js"></script>
+    <script>
+        new Vue({
+            el: '#app',
+            data: {
+                dialog: {
+                    delete: false,
+                },
+                db: null,
+                ipaddresses: [],
+                date_format: 'YYYY/MM/DD HH:mm:ss (ddd)',
+            },
+            created: function () {
+                const vm = this;
+
+                this.db = new Dexie("ip");
+                this.db.version(1).stores({
+                    ip: 'date,v4,v6'
+                });
+
+                this.db.ip.each(ip => {
+                    const date = dayjs.unix(ip.date).format(vm.date_format);
+                    vm.ipaddresses.unshift({ date: date, v4: ip.v4, v6: ip.v6 });
+                }).then(() => {
+
+                    const now = dayjs();
+
+                    this.get_ipaddresses().then((ip_addresses) => {
+                        // console.log(ip_addresses);
+                        if (ip_addresses.v4 && ip_addresses.v6) {
+                            vm.save_ipaddresses(now.unix(), ip_addresses).then((result) => {
+                                if (result) {
+                                    const date = dayjs.unix(result.date).format(vm.date_format);
+                                    vm.ipaddresses.unshift({ date: date, v4: ip_addresses.v4, v6: ip_addresses.v6 });
+                                }
+
+                            })
+                        }
+                    });
+                });
+            },
+            methods: {
+                get_ipaddresses: function() {
+                    const ip_addresses = {};
+                    return axios.get('http://v4.ident.me')
+                        .then(function (response) {
+
+                            const ip_v4 = response.data;
+                            // console.log(ip_v4);
+                            ip_addresses.v4 = ip_v4;
+
+                            return axios.get('http://v6.ident.me')
+                                .then(function (response) {
+                                    const ip_v6 = response.data;
+                                    // console.log(ip_v6);
+                                    ip_addresses.v6 = ip_v6;
+                                    return ip_addresses;
+                                });
+                        });
+                },
+                save_ipaddresses: function(date, ipaddresses) {
+                    const vm = this;
+                    let result = null;
+                    return this.db.ip.where({ v4: ipaddresses.v4, v6: ipaddresses.v6 }).count().then((count) => {
+                        // console.log('count=' + count);
+                        if (count == 0) {
+                            return vm.db.ip.put({
+                                date: date, v4: ipaddresses.v4, v6: ipaddresses.v6
+                            }).then(() => {
+                                result = { date: date, v4: ipaddresses.v4, v6: ipaddresses.v6 };
+                                return result;
+                            });
+                        }
+                    });
+                },
+                clear_db: function() {
+                    const vm = this;
+                    return this.db.delete().then(()=>{
+                        vm.ipaddresses = [];
+                        vm.dialog.delete = false;
+                    });
+                }
+            },
+            vuetify: new Vuetify(),
+        })
+    </script>
+</body>
+
+</html>
