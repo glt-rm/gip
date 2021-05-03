@@ -114,14 +114,14 @@
             methods: {
                 get_ipaddresses: function() {
                     const ip_addresses = {};
-                    return axios.get('http://v4.ident.me')
+                    return axios.get('https://v4.ident.me')
                         .then(function (response) {
 
                             const ip_v4 = response.data;
                             // console.log(ip_v4);
                             ip_addresses.v4 = ip_v4;
 
-                            return axios.get('http://v6.ident.me')
+                            return axios.get('https://v6.ident.me')
                                 .then(function (response) {
                                     const ip_v6 = response.data;
                                     // console.log(ip_v6);
